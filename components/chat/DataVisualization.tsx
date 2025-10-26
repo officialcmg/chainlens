@@ -4,7 +4,6 @@ import { Card } from '@/components/ui/card';
 import { PortfolioPieChart } from '@/components/visualizations/PortfolioPieChart';
 import { TokenBalanceCard } from '@/components/visualizations/TokenBalanceCard';
 import { TransactionCard } from '@/components/visualizations/TransactionCard';
-import { TransactionHistoryButton } from '@/components/visualizations/TransactionHistoryButton';
 import { TokenHolding, TokenBalance, TransactionSummary } from '@/lib/types/visualization';
 
 interface DataVisualizationProps {
@@ -17,9 +16,10 @@ export function DataVisualization({ data, tool, category }: DataVisualizationPro
   if (!data) return null;
 
   const renderPortfolio = () => {
-    if (!data.items || !Array.isArray(data.items)) return null;
+    const items = data.items || data;
+    if (!Array.isArray(items)) return null;
 
-    const tokenBalances: TokenBalance[] = data.items.filter((item: any) => item.token && item.value);
+    const tokenBalances: TokenBalance[] = items.filter((item: any) => item.token && item.value);
 
     if (tokenBalances.length === 0) return null;
 
@@ -69,36 +69,31 @@ export function DataVisualization({ data, tool, category }: DataVisualizationPro
     const items = data.items || data;
     if (!Array.isArray(items) || items.length === 0) return null;
 
-    const transactions: TransactionSummary[] = items.slice(0, 10).map((tx: any) => ({
-      hash: tx.hash || '',
-      from: tx.from?.hash || tx.from || '',
-      to: tx.to?.hash || tx.to || '',
-      value: tx.value || '0',
-      value_usd: tx.exchange_rate ? (Number(tx.value) / 1e18 * Number(tx.exchange_rate)).toFixed(2) : undefined,
-      timestamp: tx.timestamp || new Date().toISOString(),
-      status: tx.status === 'ok' ? 'success' : tx.status || 'pending',
-      method: tx.method || undefined,
-      type: tx.type || undefined,
+    const transactionsWithSummaries = items.slice(0, 10).map((tx: any) => ({
+      transaction: {
+        hash: tx.hash || '',
+        from: tx.from?.hash || tx.from || '',
+        to: tx.to?.hash || tx.to || '',
+        value: tx.value || '0',
+        value_usd: tx.exchange_rate ? (Number(tx.value) / 1e18 * Number(tx.exchange_rate)).toFixed(2) : undefined,
+        timestamp: tx.timestamp || new Date().toISOString(),
+        status: tx.status === 'ok' ? 'success' : tx.status || 'pending',
+        method: tx.method || undefined,
+        type: tx.type || undefined,
+      },
+      aiSummary: tx.aiSummary || undefined,
     }));
 
-    const address = transactions[0]?.from || transactions[0]?.to;
-
     return (
-      <div className="space-y-4">
-        {address && (
-          <div className="flex justify-center">
-            <TransactionHistoryButton
-              chainId="1"
-              address={address}
-              label="View Full Transaction History"
-            />
-          </div>
-        )}
-        <div className="grid grid-cols-1 gap-4">
-          {transactions.map((tx, index) => (
-            <TransactionCard key={index} transaction={tx} chainId="1" />
-          ))}
-        </div>
+      <div className="grid grid-cols-1 gap-4">
+        {transactionsWithSummaries.map((item, index) => (
+          <TransactionCard
+            key={index}
+            transaction={item.transaction}
+            chainId="1"
+            aiSummary={item.aiSummary}
+          />
+        ))}
       </div>
     );
   };

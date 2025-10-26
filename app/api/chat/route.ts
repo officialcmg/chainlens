@@ -166,6 +166,39 @@ async function callOpenAI(messages: Array<{ role: string; content: string }>) {
   return data.choices[0].message.content;
 }
 
+async function analyzeTransaction(tx: any, chainId: string): Promise<string> {
+  try {
+    const txInfo = `
+Transaction Hash: ${tx.hash}
+From: ${tx.from?.hash || tx.from_address}
+To: ${tx.to?.hash || tx.to_address}
+Value: ${(parseFloat(tx.value || 0) / 1e18).toFixed(6)} ETH
+Method: ${tx.method || 'transfer'}
+Status: ${tx.status || 'ok'}
+Gas Used: ${tx.gas_used || 'N/A'}
+${tx.decoded_input ? `Decoded Input: ${JSON.stringify(tx.decoded_input)}` : ''}
+${tx.token_transfers && tx.token_transfers.length > 0 ? `Token Transfers: ${tx.token_transfers.length} tokens moved` : ''}
+    `.trim();
+
+    const analysisPrompt = [
+      {
+        role: 'system',
+        content: 'You are an expert Ethereum transaction analyst. Analyze this transaction deeply (including logs, inputs, and decoded data). Return a single plain-text sentence clearly describing what happened — e.g., "User approved 100 USDC for Uniswap Router" or "User swapped 1 ETH for 1800 USDC on Uniswap." Be concise, accurate, and human-readable. No technical jargon unless necessary.'
+      },
+      {
+        role: 'user',
+        content: txInfo
+      }
+    ];
+
+    const summary = await callOpenAI(analysisPrompt);
+    return summary.trim();
+  } catch (error) {
+    console.error('AI transaction analysis error:', error);
+    return '';
+  }
+}
+
 function formatResponse(data: any, tool: string): string {
   if (tool === 'get_token_transfers_by_address') {
     const items = data.data || [];
@@ -238,8 +271,8 @@ function formatResponse(data: any, tool: string): string {
     let response = 'Recent Transactions:\n\n';
     items.slice(0, 5).forEach((tx: any, i: number) => {
       response += `${i + 1}. Tx ${tx.hash?.substring(0, 10)}...\n`;
-      response += `   From: ${tx.from_address?.substring(0, 10)}...\n`;
-      response += `   To: ${tx.to_address?.substring(0, 10)}...\n`;
+      response += `   From: ${tx.from?.hash || tx.from_address}`.substring(0, 20) + '...\n';
+      response += `   To: ${tx.to?.hash || tx.to_address}`.substring(0, 20) + '...\n';
       response += `   Value: ${(parseFloat(tx.value || 0) / 1e18).toFixed(6)} ETH\n`;
       if (tx.method) response += `   Method: ${tx.method}\n`;
       if (tx.timestamp) response += `   Time: ${new Date(tx.timestamp).toLocaleString()}\n`;
@@ -400,11 +433,28 @@ export async function POST(req: NextRequest) {
     }
 
     const mcpResult = await callBlockscoutMCP(parsedAnalysis.tool, parsedAnalysis.params);
+
+    let enrichedData = mcpResult.data || mcpResult;
+
+    if (parsedAnalysis.tool === 'get_transactions_by_address') {
+      const items = enrichedData.items || enrichedData;
+      if (Array.isArray(items) && items.length > 0) {
+        const chainId = parsedAnalysis.params.chain_id || '1';
+        const txSummaries = await Promise.all(
+          items.slice(0, 10).map(async (tx: any) => {
+            const aiSummary = await analyzeTransaction(tx, chainId);
+            return { ...tx, aiSummary };
+          })
+        );
+        enrichedData = Array.isArray(enrichedData) ? txSummaries : { ...enrichedData, items: txSummaries };
+      }
+    }
+
     const formattedResponse = formatResponse(mcpResult, parsedAnalysis.tool);
 
     return NextResponse.json({
       response: formattedResponse,
-      data: mcpResult.data || mcpResult,
+      data: enrichedData,
       type: parsedAnalysis.tool,
       tool: parsedAnalysis.tool,
     });

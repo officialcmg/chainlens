@@ -1,12 +1,15 @@
-'use client';
-
 import './globals.css';
+import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
 import { ThemeProvider } from 'next-themes';
 import { Toaster } from '@/components/ui/sonner';
-import { NotificationProvider, TransactionPopupProvider } from '@blockscout/app-sdk';
 
 const inter = Inter({ subsets: ['latin'] });
+
+export const metadata: Metadata = {
+  title: 'ChainLens AI - Conversational Blockchain Explorer',
+  description: 'Explore blockchain data through natural language using Blockscout MCP. Ask questions about addresses, transactions, tokens, and more across multiple chains.',
+};
 
 export default function RootLayout({
   children,
@@ -15,18 +18,10 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <head>
-        <title>ChainLens AI - Conversational Blockchain Explorer</title>
-        <meta name="description" content="Explore blockchain data through natural language using Blockscout MCP. Ask questions about addresses, transactions, tokens, and more across multiple chains." />
-      </head>
       <body className={inter.className}>
         <ThemeProvider attribute="class" defaultTheme="dark" enableSystem>
-          <NotificationProvider>
-            <TransactionPopupProvider>
-              {children}
-              <Toaster />
-            </TransactionPopupProvider>
-          </NotificationProvider>
+          {children}
+          <Toaster />
         </ThemeProvider>
       </body>
     </html>

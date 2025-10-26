@@ -6,27 +6,17 @@ import {
   CardHeader,
 } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { ArrowRight, CheckCircle, XCircle, Clock, ExternalLink, Eye } from 'lucide-react';
+import { ArrowRight, CheckCircle, XCircle, Clock, ExternalLink, Sparkles } from 'lucide-react';
 import { TransactionSummary } from '@/lib/types/visualization';
-import { useNotification } from '@blockscout/app-sdk';
 
 interface TransactionCardProps {
   transaction: TransactionSummary;
   currentAddress?: string;
   chainId?: string;
+  aiSummary?: string;
 }
 
-export function TransactionCard({ transaction, currentAddress, chainId = '1' }: TransactionCardProps) {
-  const { openTxToast } = useNotification();
-
-  const handleViewDetails = async () => {
-    try {
-      await openTxToast(chainId, transaction.hash);
-    } catch (error) {
-      console.error('Failed to open transaction toast:', error);
-    }
-  };
+export function TransactionCard({ transaction, currentAddress, chainId = '1', aiSummary }: TransactionCardProps) {
 
   const formatAddress = (address: string) => {
     return `${address.slice(0, 6)}...${address.slice(-4)}`;
@@ -80,28 +70,23 @@ export function TransactionCard({ transaction, currentAddress, chainId = '1' }: 
               </Badge>
             )}
           </div>
-          <div className="flex items-center gap-2">
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={handleViewDetails}
-              className="text-blue-400 hover:text-blue-300 hover:bg-slate-800"
-            >
-              <Eye className="w-4 h-4 mr-1" />
-              Details
-            </Button>
-            <a
-              href={`https://eth.blockscout.com/tx/${transaction.hash}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-blue-400 hover:text-blue-300 transition-colors p-2"
-            >
-              <ExternalLink className="w-4 h-4" />
-            </a>
-          </div>
+          <a
+            href={`https://eth.blockscout.com/tx/${transaction.hash}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-blue-400 hover:text-blue-300 transition-colors p-2"
+          >
+            <ExternalLink className="w-4 h-4" />
+          </a>
         </div>
       </CardHeader>
       <CardContent className="space-y-3">
+        {aiSummary && (
+          <div className="flex items-start gap-2 p-3 rounded-lg bg-blue-500/10 border border-blue-500/20">
+            <Sparkles className="w-4 h-4 text-blue-400 mt-0.5 flex-shrink-0" />
+            <p className="text-sm text-blue-100 leading-relaxed">{aiSummary}</p>
+          </div>
+        )}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <div className={`px-2 py-1 rounded text-xs font-medium ${
