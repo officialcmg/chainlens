@@ -40,19 +40,38 @@ export function DataVisualization({ data, tool, category }: DataVisualizationPro
       };
     });
 
-    const validHoldings = tokenHoldings.filter(th => th.value_usd > 0.01);
+    // Filter holdings with meaningful balances - be more lenient with the threshold
+    const validHoldings = tokenHoldings.filter(th => th.balance > 0.000001);
 
-    validHoldings.forEach(th => {
-      th.percentage = totalValueUsd > 0 ? (th.value_usd / totalValueUsd) * 100 : 0;
-    });
-
-    validHoldings.sort((a, b) => b.value_usd - a.value_usd);
+    // Calculate percentages based on USD value if available, otherwise by count
+    if (totalValueUsd > 0.01) {
+      validHoldings.forEach(th => {
+        th.percentage = (th.value_usd / totalValueUsd) * 100;
+      });
+      validHoldings.sort((a, b) => b.value_usd - a.value_usd);
+    } else {
+      // No USD values available - distribute evenly for visualization
+      const equalPercentage = 100 / validHoldings.length;
+      validHoldings.forEach(th => {
+        th.percentage = equalPercentage;
+      });
+      validHoldings.sort((a, b) => b.balance - a.balance);
+    }
 
     if (validHoldings.length === 0) return null;
 
     return (
       <div className="space-y-4">
-        <PortfolioPieChart tokens={validHoldings} totalValue={totalValueUsd} />
+        {totalValueUsd > 0.01 ? (
+          <PortfolioPieChart tokens={validHoldings} totalValue={totalValueUsd} />
+        ) : (
+          <Card className="p-6 bg-slate-900/50 border-slate-800">
+            <div className="text-center">
+              <p className="text-slate-300 mb-2">Portfolio Tokens Detected</p>
+              <p className="text-slate-400 text-sm">USD values not available for price visualization</p>
+            </div>
+          </Card>
+        )}
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {validHoldings.slice(0, 6).map((holding, index) => {
@@ -62,7 +81,7 @@ export function DataVisualization({ data, tool, category }: DataVisualizationPro
               <TokenBalanceCard
                 key={index}
                 token={token}
-                valueUsd={holding.value_usd}
+                valueUsd={holding.value_usd > 0.01 ? holding.value_usd : undefined}
               />
             );
           })}
@@ -146,11 +165,40 @@ export function DataVisualization({ data, tool, category }: DataVisualizationPro
     );
   };
 
+  const renderSingleTransaction = () => {
+    const tx = data;
+    if (!tx || !tx.hash) return null;
+
+    const transaction: TransactionSummary = {
+      hash: tx.hash || '',
+      from: tx.from?.hash || tx.from || '',
+      to: tx.to?.hash || tx.to || '',
+      value: tx.value || '0',
+      value_usd: undefined,
+      timestamp: tx.timestamp || new Date().toISOString(),
+      status: tx.status === 'ok' ? 'success' : tx.status || 'pending',
+      method: tx.method || undefined,
+      type: tx.type || undefined,
+    };
+
+    return (
+      <div className="grid grid-cols-1 gap-4">
+        <TransactionCard
+          transaction={transaction}
+          chainId="1"
+          aiSummary={tx.aiSummary}
+        />
+      </div>
+    );
+  };
+
   switch (tool) {
     case 'get_tokens_by_address':
       return renderPortfolio();
     case 'get_transactions_by_address':
       return renderTransactions();
+    case 'get_transaction_info':
+      return renderSingleTransaction();
     case 'get_token_transfers_by_address':
       return renderTokenTransfers();
     default:

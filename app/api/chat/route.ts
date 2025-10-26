@@ -43,7 +43,7 @@ COMPREHENSIVE BLOCKSCOUT MCP TOOLS:
    Parameters: { chain_id: string, transaction_hash: string, cursor?: string }
    Returns: Decoded event logs with parameters
 
-10. transaction_summary - Get human-readable transaction summary
+10. transaction_summary - Get human-readable transaction summary (AVOID - prefer get_transaction_info for single transactions)
     Parameters: { chain_id: string, transaction_hash: string }
     Returns: Natural language description with action type, amounts, addresses
 
@@ -93,6 +93,7 @@ IMPORTANT RULES:
 - For token balances, use get_tokens_by_address which returns ALL tokens
 - For token transfers history, use get_token_transfers_by_address (more detailed than transactions)
 - For specific token queries, filter results or use lookup_token_by_symbol first
+- When user asks to "explain a transaction" or "what is this transaction", use get_transaction_info (NOT transaction_summary)
 - dates in age_from/age_to use ISO format: "2025-10-26T00:00:00.00Z"
 - If pagination exists in response, mention "more data available"
 - Always explain what you found in clear, simple language
@@ -450,7 +451,21 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const formattedResponse = formatResponse(mcpResult, parsedAnalysis.tool);
+    // For single transaction queries, add AI explanation
+    if (parsedAnalysis.tool === 'get_transaction_info' && enrichedData) {
+      const chainId = parsedAnalysis.params.chain_id || '1';
+      const aiSummary = await analyzeTransaction(enrichedData, chainId);
+      if (aiSummary) {
+        enrichedData = { ...enrichedData, aiSummary };
+      }
+    }
+
+    let formattedResponse = formatResponse(mcpResult, parsedAnalysis.tool);
+
+    // Append AI explanation to transaction info response
+    if (parsedAnalysis.tool === 'get_transaction_info' && enrichedData?.aiSummary) {
+      formattedResponse = `**AI Analysis:**\n${enrichedData.aiSummary}\n\n${formattedResponse}`;
+    }
 
     return NextResponse.json({
       response: formattedResponse,
