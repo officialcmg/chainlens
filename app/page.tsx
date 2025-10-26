@@ -8,6 +8,7 @@ import { ExampleQueries } from '@/components/chat/ExampleQueries';
 import { TypingIndicator } from '@/components/chat/TypingIndicator';
 import { Network, ExternalLink } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { replaceENSNamesInText } from '@/lib/ens-resolver';
 
 export default function Home() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -32,6 +33,30 @@ export default function Home() {
     setIsLoading(true);
 
     try {
+      let processedContent = content;
+      const ensResult = await replaceENSNamesInText(content);
+
+      if (ensResult.replacements.length > 0) {
+        processedContent = ensResult.text;
+        console.log('ENS Resolved:', ensResult.replacements);
+
+        const resolutionInfo = ensResult.replacements
+          .map(r => `${r.ens} → ${r.address}`)
+          .join(', ');
+
+        const infoMessage: ChatMessage = {
+          id: `${Date.now()}-info`,
+          role: 'assistant',
+          content: `Resolved: ${resolutionInfo}`,
+          timestamp: new Date(),
+        };
+        setMessages((prev) => [...prev, infoMessage]);
+      }
+
+      if (ensResult.errors.length > 0) {
+        console.warn('ENS Resolution Errors:', ensResult.errors);
+      }
+
       const conversationHistory = messages.map(msg => ({
         role: msg.role,
         content: msg.content
@@ -41,7 +66,7 @@ export default function Home() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          message: content,
+          message: processedContent,
           history: conversationHistory,
         }),
       });

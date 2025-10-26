@@ -8,10 +8,10 @@ interface ExampleQueriesProps {
 }
 
 const EXAMPLE_QUERIES = [
-  "What tokens does 0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045 hold?",
-  "Show latest transactions for 0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045",
-  "Explain transaction 0x5c504ed432cb51138bcf09aa5e8a410dd4a1e204ef84bfed1be16dfba1b22060",
-  "What is the latest block on Ethereum?"
+  "What tokens does vitalik.eth hold?",
+  "Show latest transactions for vitalik.eth",
+  "What is chrismg.eth's token portfolio on Base?",
+  "Explain transaction 0x5c504ed432cb51138bcf09aa5e8a410dd4a1e204ef84bfed1be16dfba1b22060"
 ];
 
 export function ExampleQueries({ onSelectQuery, disabled }: ExampleQueriesProps) {

@@ -89,8 +89,7 @@ CONVERSATION GUIDELINES:
 
 IMPORTANT RULES:
 - ALL chain_id values MUST be strings, not numbers
-- For ENS names (.eth), first call get_address_by_ens_name (no chain_id needed)
-- ENS resolution returns "resolved_address" field in data object
+- ENS names (.eth) are already resolved to addresses on the frontend - you will receive addresses directly
 - For token balances, use get_tokens_by_address which returns ALL tokens
 - For token transfers history, use get_token_transfers_by_address (more detailed than transactions)
 - For specific token queries, filter results or use lookup_token_by_symbol first
@@ -110,16 +109,6 @@ For clarification:
 {
   "clarification_needed": true,
   "message": "Your question to the user"
-}
-
-For ENS resolution first:
-{
-  "needs_resolution": true,
-  "resolution_tool": "get_address_by_ens_name",
-  "resolution_params": { "name": "vitalik.eth" },
-  "next_tool": "get_tokens_by_address",
-  "next_params": { "chain_id": "1" },
-  "explanation": "Resolving ENS name, then fetching tokens"
 }`;
 
 async function callBlockscoutMCP(tool: string, params: Record<string, any>) {
@@ -410,47 +399,14 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    let finalTool = parsedAnalysis.tool;
-    let finalParams = parsedAnalysis.params;
-
-    if (parsedAnalysis.needs_resolution && parsedAnalysis.resolution_tool === 'get_address_by_ens_name') {
-      try {
-        const resolutionResult = await callBlockscoutMCP(
-          'get_address_by_ens_name',
-          parsedAnalysis.resolution_params
-        );
-
-        if (resolutionResult.data?.resolved_address) {
-          finalParams = {
-            ...parsedAnalysis.next_params,
-            address: resolutionResult.data.resolved_address
-          };
-          finalTool = parsedAnalysis.next_tool;
-        } else {
-          return NextResponse.json({
-            response: `Could not resolve ENS name "${parsedAnalysis.resolution_params.name}". Please provide the Ethereum address directly.`,
-            data: null,
-            type: 'error',
-          });
-        }
-      } catch (error: any) {
-        const ensName = parsedAnalysis.resolution_params.name;
-        return NextResponse.json({
-          response: `ENS resolution service is currently unavailable. Common addresses:\n\nvitalik.eth = 0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045\n\nPlease provide the Ethereum address directly, or try again later.`,
-          data: null,
-          type: 'error',
-        });
-      }
-    }
-
-    const mcpResult = await callBlockscoutMCP(finalTool, finalParams);
-    const formattedResponse = formatResponse(mcpResult, finalTool);
+    const mcpResult = await callBlockscoutMCP(parsedAnalysis.tool, parsedAnalysis.params);
+    const formattedResponse = formatResponse(mcpResult, parsedAnalysis.tool);
 
     return NextResponse.json({
       response: formattedResponse,
       data: mcpResult.data || mcpResult,
-      type: finalTool,
-      tool: finalTool,
+      type: parsedAnalysis.tool,
+      tool: parsedAnalysis.tool,
     });
   } catch (error: any) {
     console.error('API error:', error);
