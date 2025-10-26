@@ -16,10 +16,22 @@ export function DataVisualization({ data, tool, category }: DataVisualizationPro
   if (!data) return null;
 
   const renderPortfolio = () => {
-    const items = data.items || data;
-    if (!Array.isArray(items)) return null;
+    // Handle the actual API structure where data.data is the array
+    const items = Array.isArray(data.data) ? data.data : (data.data?.items || data.items || null);
+    if (!items || !Array.isArray(items)) return null;
 
-    const tokenBalances: TokenBalance[] = items.filter((item: any) => item.token && item.value);
+    // Map the API response structure to our TokenBalance type
+    const tokenBalances: TokenBalance[] = items.map((item: any) => ({
+      token: {
+        address: item.address,
+        name: item.name,
+        symbol: item.symbol,
+        decimals: item.decimals,
+        type: 'ERC-20',
+        exchange_rate: item.exchange_rate
+      },
+      value: item.balance
+    })).filter((item: any) => item.value);
 
     if (tokenBalances.length === 0) return null;
 
@@ -91,23 +103,32 @@ export function DataVisualization({ data, tool, category }: DataVisualizationPro
   };
 
   const renderTransactions = () => {
-    const items = data.items || data;
-    if (!Array.isArray(items) || items.length === 0) return null;
+    const items = data.data?.items || data.items || (Array.isArray(data.data) ? data.data : null);
+    if (!items || !Array.isArray(items) || items.length === 0) return null;
 
-    const transactionsWithSummaries = items.slice(0, 10).map((tx: any) => ({
-      transaction: {
-        hash: tx.hash || '',
-        from: tx.from?.hash || tx.from || '',
-        to: tx.to?.hash || tx.to || '',
-        value: tx.value || '0',
-        value_usd: tx.exchange_rate ? (Number(tx.value) / 1e18 * Number(tx.exchange_rate)).toFixed(2) : undefined,
-        timestamp: tx.timestamp || new Date().toISOString(),
-        status: tx.status === 'ok' ? 'success' : tx.status || 'pending',
-        method: tx.method || undefined,
-        type: tx.type || undefined,
-      },
-      aiSummary: tx.aiSummary || undefined,
-    }));
+    const transactionsWithSummaries = items.slice(0, 10).map((tx: any) => {
+      let status: 'success' | 'failed' | 'pending' = 'pending';
+      if (tx.result === 'success' || tx.status === 'ok' || tx.status === '0x1') {
+        status = 'success';
+      } else if (tx.result === 'error' || tx.status === '0x0') {
+        status = 'failed';
+      }
+      
+      return {
+        transaction: {
+          hash: tx.hash || '',
+          from: tx.from?.hash || tx.from_address || tx.from || '',
+          to: tx.to?.hash || tx.to_address || tx.to || '',
+          value: tx.value || '0',
+          value_usd: tx.exchange_rate ? (Number(tx.value) / 1e18 * Number(tx.exchange_rate)).toFixed(2) : undefined,
+          timestamp: tx.timestamp || new Date().toISOString(),
+          status,
+          method: tx.method || undefined,
+          type: tx.type || undefined,
+        },
+        aiSummary: tx.aiSummary || undefined,
+      };
+    });
 
     return (
       <div className="grid grid-cols-1 gap-4">
@@ -124,8 +145,8 @@ export function DataVisualization({ data, tool, category }: DataVisualizationPro
   };
 
   const renderTokenTransfers = () => {
-    const items = data.items || data;
-    if (!Array.isArray(items) || items.length === 0) return null;
+    const items = data.data?.items || data.items || (Array.isArray(data.data) ? data.data : null);
+    if (!items || !Array.isArray(items) || items.length === 0) return null;
 
     return (
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -166,17 +187,24 @@ export function DataVisualization({ data, tool, category }: DataVisualizationPro
   };
 
   const renderSingleTransaction = () => {
-    const tx = data;
+    const tx = data.data || data;
     if (!tx || !tx.hash) return null;
+
+    let status: 'success' | 'failed' | 'pending' = 'pending';
+    if (tx.result === 'success' || tx.status === 'ok' || tx.status === '0x1') {
+      status = 'success';
+    } else if (tx.result === 'error' || tx.status === '0x0') {
+      status = 'failed';
+    }
 
     const transaction: TransactionSummary = {
       hash: tx.hash || '',
-      from: tx.from?.hash || tx.from || '',
-      to: tx.to?.hash || tx.to || '',
+      from: tx.from?.hash || tx.from_address || tx.from || '',
+      to: tx.to?.hash || tx.to_address || tx.to || '',
       value: tx.value || '0',
       value_usd: undefined,
       timestamp: tx.timestamp || new Date().toISOString(),
-      status: tx.status === 'ok' ? 'success' : tx.status || 'pending',
+      status,
       method: tx.method || undefined,
       type: tx.type || undefined,
     };

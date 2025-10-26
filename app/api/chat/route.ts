@@ -167,12 +167,18 @@ async function callOpenAI(messages: Array<{ role: string; content: string }>) {
   return data.choices[0].message.content;
 }
 
-async function analyzeTransaction(tx: any, chainId: string): Promise<string> {
+async function analyzeTransaction(tx: any, chainId: string, queriedAddress?: string): Promise<string> {
   try {
+    const fromAddr = tx.from?.hash || tx.from_address || tx.from || '';
+    const toAddr = tx.to?.hash || tx.to_address || tx.to || '';
+    const isIncoming = queriedAddress && toAddr.toLowerCase() === queriedAddress.toLowerCase();
+    const isOutgoing = queriedAddress && fromAddr.toLowerCase() === queriedAddress.toLowerCase();
+    
     const txInfo = `
 Transaction Hash: ${tx.hash}
-From: ${tx.from?.hash || tx.from_address}
-To: ${tx.to?.hash || tx.to_address}
+From: ${fromAddr}
+To: ${toAddr}
+${queriedAddress ? `Queried Address: ${queriedAddress} (Transaction is ${isIncoming ? 'INCOMING to' : isOutgoing ? 'OUTGOING from' : 'related to'} this address)` : ''}
 Value: ${(parseFloat(tx.value || 0) / 1e18).toFixed(6)} ETH
 Method: ${tx.method || 'transfer'}
 Status: ${tx.status || 'ok'}
@@ -184,7 +190,7 @@ ${tx.token_transfers && tx.token_transfers.length > 0 ? `Token Transfers: ${tx.t
     const analysisPrompt = [
       {
         role: 'system',
-        content: 'You are an expert Ethereum transaction analyst. Analyze this transaction deeply (including logs, inputs, and decoded data). Return a single plain-text sentence clearly describing what happened — e.g., "User approved 100 USDC for Uniswap Router" or "User swapped 1 ETH for 1800 USDC on Uniswap." Be concise, accurate, and human-readable. No technical jargon unless necessary.'
+        content: 'You are an expert Ethereum transaction analyst. Analyze this transaction and describe what happened from the perspective of the queried address. Use specific address references (first 6 chars) when describing the transaction. For incoming transactions, say "received from 0x1234...". For outgoing transactions, say "sent to 0x5678...". Be concise, accurate, and human-readable. Examples: "Received 0.1 ETH from 0x1234..." or "Sent 5 USDC to 0x5678..." or "Swapped 1 ETH for 1800 USDC".'
       },
       {
         role: 'user',
@@ -435,36 +441,38 @@ export async function POST(req: NextRequest) {
 
     const mcpResult = await callBlockscoutMCP(parsedAnalysis.tool, parsedAnalysis.params);
 
-    let enrichedData = mcpResult.data || mcpResult;
+    let enrichedData = mcpResult;
+    const queriedAddress = parsedAnalysis.params.address;
 
     if (parsedAnalysis.tool === 'get_transactions_by_address') {
-      const items = enrichedData.items || enrichedData;
+      const items = mcpResult.data?.items || mcpResult.items || [];
       if (Array.isArray(items) && items.length > 0) {
         const chainId = parsedAnalysis.params.chain_id || '1';
         const txSummaries = await Promise.all(
           items.slice(0, 10).map(async (tx: any) => {
-            const aiSummary = await analyzeTransaction(tx, chainId);
+            const aiSummary = await analyzeTransaction(tx, chainId, queriedAddress);
             return { ...tx, aiSummary };
           })
         );
-        enrichedData = Array.isArray(enrichedData) ? txSummaries : { ...enrichedData, items: txSummaries };
+        enrichedData = { ...mcpResult, data: { ...mcpResult.data, items: txSummaries } };
       }
     }
 
     // For single transaction queries, add AI explanation
-    if (parsedAnalysis.tool === 'get_transaction_info' && enrichedData) {
+    if (parsedAnalysis.tool === 'get_transaction_info') {
+      const txData = mcpResult.data || mcpResult;
       const chainId = parsedAnalysis.params.chain_id || '1';
-      const aiSummary = await analyzeTransaction(enrichedData, chainId);
+      const aiSummary = await analyzeTransaction(txData, chainId, queriedAddress);
       if (aiSummary) {
-        enrichedData = { ...enrichedData, aiSummary };
+        enrichedData = { ...mcpResult, data: { ...txData, aiSummary } };
       }
     }
 
     let formattedResponse = formatResponse(mcpResult, parsedAnalysis.tool);
 
     // Append AI explanation to transaction info response
-    if (parsedAnalysis.tool === 'get_transaction_info' && enrichedData?.aiSummary) {
-      formattedResponse = `**AI Analysis:**\n${enrichedData.aiSummary}\n\n${formattedResponse}`;
+    if (parsedAnalysis.tool === 'get_transaction_info' && enrichedData.data?.aiSummary) {
+      formattedResponse = `**AI Analysis:**\n${enrichedData.data.aiSummary}\n\n${formattedResponse}`;
     }
 
     return NextResponse.json({
