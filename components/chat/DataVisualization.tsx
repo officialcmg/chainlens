@@ -26,7 +26,8 @@ export function DataVisualization({ data, tool, category }: DataVisualizationPro
     let totalValueUsd = 0;
     const tokenHoldings: TokenHolding[] = tokenBalances.map((tb, index) => {
       const balance = Number(tb.value) / Math.pow(10, Number(tb.token.decimals));
-      const valueUsd = Number(tb.value) || 0;
+      const exchangeRate = tb.token.exchange_rate ? parseFloat(tb.token.exchange_rate) : 0;
+      const valueUsd = balance * exchangeRate;
       totalValueUsd += valueUsd;
 
       return {
@@ -39,24 +40,29 @@ export function DataVisualization({ data, tool, category }: DataVisualizationPro
       };
     });
 
-    tokenHoldings.forEach(th => {
+    const validHoldings = tokenHoldings.filter(th => th.value_usd > 0.01);
+
+    validHoldings.forEach(th => {
       th.percentage = totalValueUsd > 0 ? (th.value_usd / totalValueUsd) * 100 : 0;
     });
 
-    tokenHoldings.sort((a, b) => b.value_usd - a.value_usd);
+    validHoldings.sort((a, b) => b.value_usd - a.value_usd);
+
+    if (validHoldings.length === 0) return null;
 
     return (
       <div className="space-y-4">
-        <PortfolioPieChart tokens={tokenHoldings} totalValue={totalValueUsd} />
+        <PortfolioPieChart tokens={validHoldings} totalValue={totalValueUsd} />
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {tokenBalances.slice(0, 6).map((token, index) => {
-            const holding = tokenHoldings.find(h => h.symbol === token.token.symbol);
+          {validHoldings.slice(0, 6).map((holding, index) => {
+            const token = tokenBalances.find(t => t.token.symbol === holding.symbol);
+            if (!token) return null;
             return (
               <TokenBalanceCard
                 key={index}
                 token={token}
-                valueUsd={holding?.value_usd}
+                valueUsd={holding.value_usd}
               />
             );
           })}
