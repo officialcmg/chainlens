@@ -1,200 +1,143 @@
 'use client';
 
 import { Card } from '@/components/ui/card';
-import { Copy, ExternalLink, Check } from 'lucide-react';
-import { useState } from 'react';
+import { PortfolioPieChart } from '@/components/visualizations/PortfolioPieChart';
+import { TokenBalanceCard } from '@/components/visualizations/TokenBalanceCard';
+import { TransactionCard } from '@/components/visualizations/TransactionCard';
+import { TransactionHistoryButton } from '@/components/visualizations/TransactionHistoryButton';
+import { TokenHolding, TokenBalance, TransactionSummary } from '@/lib/types/visualization';
 
 interface DataVisualizationProps {
   data: any;
   tool?: string;
+  category?: string;
 }
 
-export function DataVisualization({ data, tool }: DataVisualizationProps) {
-  const [copiedText, setCopiedText] = useState<string | null>(null);
-
-  const copyToClipboard = (text: string, label: string) => {
-    navigator.clipboard.writeText(text);
-    setCopiedText(label);
-    setTimeout(() => setCopiedText(null), 2000);
-  };
-
+export function DataVisualization({ data, tool, category }: DataVisualizationProps) {
   if (!data) return null;
 
-  const renderAddressInfo = () => {
-    if (!data || typeof data !== 'object') return null;
+  const renderPortfolio = () => {
+    if (!data.items || !Array.isArray(data.items)) return null;
+
+    const tokenBalances: TokenBalance[] = data.items.filter((item: any) => item.token && item.value);
+
+    if (tokenBalances.length === 0) return null;
+
+    let totalValueUsd = 0;
+    const tokenHoldings: TokenHolding[] = tokenBalances.map((tb, index) => {
+      const balance = Number(tb.value) / Math.pow(10, Number(tb.token.decimals));
+      const valueUsd = Number(tb.value) || 0;
+      totalValueUsd += valueUsd;
+
+      return {
+        name: tb.token.name,
+        symbol: tb.token.symbol,
+        balance,
+        value_usd: valueUsd,
+        percentage: 0,
+        color: '',
+      };
+    });
+
+    tokenHoldings.forEach(th => {
+      th.percentage = totalValueUsd > 0 ? (th.value_usd / totalValueUsd) * 100 : 0;
+    });
+
+    tokenHoldings.sort((a, b) => b.value_usd - a.value_usd);
 
     return (
-      <Card className="p-4 bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700">
-        <div className="space-y-3">
-          {data.hash && (
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-slate-600 dark:text-slate-400">Address:</span>
-              <div className="flex items-center gap-2">
-                <code className="text-xs bg-slate-100 dark:bg-slate-900 px-2 py-1 rounded">
-                  {data.hash.slice(0, 10)}...{data.hash.slice(-8)}
-                </code>
-                <button
-                  onClick={() => copyToClipboard(data.hash, 'address')}
-                  className="p-1 hover:bg-slate-100 dark:hover:bg-slate-700 rounded"
-                >
-                  {copiedText === 'address' ? (
-                    <Check className="w-4 h-4 text-green-500" />
-                  ) : (
-                    <Copy className="w-4 h-4 text-slate-500" />
-                  )}
-                </button>
-              </div>
-            </div>
-          )}
+      <div className="space-y-4">
+        <PortfolioPieChart tokens={tokenHoldings} totalValue={totalValueUsd} />
 
-          {data.coin_balance && (
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-slate-600 dark:text-slate-400">Balance:</span>
-              <span className="text-sm font-semibold">
-                {(parseFloat(data.coin_balance) / 1e18).toFixed(4)} ETH
-              </span>
-            </div>
-          )}
-
-          {data.transactions_count !== undefined && (
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-slate-600 dark:text-slate-400">Transactions:</span>
-              <span className="text-sm font-semibold">{data.transactions_count}</span>
-            </div>
-          )}
-
-          {data.token_balances && Array.isArray(data.token_balances) && (
-            <div>
-              <span className="text-sm text-slate-600 dark:text-slate-400 mb-2 block">
-                Token Balances:
-              </span>
-              <div className="space-y-2">
-                {data.token_balances.slice(0, 5).map((token: any, idx: number) => (
-                  <div
-                    key={idx}
-                    className="flex items-center justify-between bg-slate-50 dark:bg-slate-900 p-2 rounded"
-                  >
-                    <span className="text-xs font-medium">{token.token?.symbol || 'Unknown'}</span>
-                    <span className="text-xs">{token.value || '0'}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {tokenBalances.slice(0, 6).map((token, index) => {
+            const holding = tokenHoldings.find(h => h.symbol === token.token.symbol);
+            return (
+              <TokenBalanceCard
+                key={index}
+                token={token}
+                valueUsd={holding?.value_usd}
+              />
+            );
+          })}
         </div>
-      </Card>
+      </div>
     );
   };
 
   const renderTransactions = () => {
-    if (!data || !Array.isArray(data.items) || data.items.length === 0) return null;
+    const items = data.items || data;
+    if (!Array.isArray(items) || items.length === 0) return null;
+
+    const transactions: TransactionSummary[] = items.slice(0, 10).map((tx: any) => ({
+      hash: tx.hash || '',
+      from: tx.from?.hash || tx.from || '',
+      to: tx.to?.hash || tx.to || '',
+      value: tx.value || '0',
+      value_usd: tx.exchange_rate ? (Number(tx.value) / 1e18 * Number(tx.exchange_rate)).toFixed(2) : undefined,
+      timestamp: tx.timestamp || new Date().toISOString(),
+      status: tx.status === 'ok' ? 'success' : tx.status || 'pending',
+      method: tx.method || undefined,
+      type: tx.type || undefined,
+    }));
+
+    const address = transactions[0]?.from || transactions[0]?.to;
 
     return (
-      <Card className="p-4 bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-slate-200 dark:border-slate-700">
-              <th className="text-left py-2 text-slate-600 dark:text-slate-400">Hash</th>
-              <th className="text-left py-2 text-slate-600 dark:text-slate-400">From</th>
-              <th className="text-left py-2 text-slate-600 dark:text-slate-400">To</th>
-              <th className="text-right py-2 text-slate-600 dark:text-slate-400">Value</th>
-            </tr>
-          </thead>
-          <tbody>
-            {data.items.slice(0, 10).map((tx: any, idx: number) => (
-              <tr key={idx} className="border-b border-slate-100 dark:border-slate-800">
-                <td className="py-2">
-                  <code className="text-xs bg-slate-100 dark:bg-slate-900 px-1 rounded">
-                    {tx.hash?.slice(0, 8)}...
-                  </code>
-                </td>
-                <td className="py-2">
-                  <code className="text-xs">{tx.from?.hash?.slice(0, 8)}...</code>
-                </td>
-                <td className="py-2">
-                  <code className="text-xs">{tx.to?.hash?.slice(0, 8)}...</code>
-                </td>
-                <td className="py-2 text-right">
-                  {tx.value ? (parseFloat(tx.value) / 1e18).toFixed(4) : '0'} ETH
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </Card>
+      <div className="space-y-4">
+        {address && (
+          <div className="flex justify-center">
+            <TransactionHistoryButton
+              chainId="1"
+              address={address}
+              label="View Full Transaction History"
+            />
+          </div>
+        )}
+        <div className="grid grid-cols-1 gap-4">
+          {transactions.map((tx, index) => (
+            <TransactionCard key={index} transaction={tx} chainId="1" />
+          ))}
+        </div>
+      </div>
     );
   };
 
-  const renderTransactionSummary = () => {
-    if (!data || typeof data !== 'object') return null;
+  const renderTokenTransfers = () => {
+    const items = data.items || data;
+    if (!Array.isArray(items) || items.length === 0) return null;
 
     return (
-      <Card className="p-4 bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700">
-        <div className="space-y-3">
-          {data.hash && (
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-slate-600 dark:text-slate-400">Transaction:</span>
-              <div className="flex items-center gap-2">
-                <code className="text-xs bg-slate-100 dark:bg-slate-900 px-2 py-1 rounded">
-                  {data.hash.slice(0, 10)}...{data.hash.slice(-8)}
-                </code>
-                <button
-                  onClick={() => copyToClipboard(data.hash, 'tx')}
-                  className="p-1 hover:bg-slate-100 dark:hover:bg-slate-700 rounded"
-                >
-                  {copiedText === 'tx' ? (
-                    <Check className="w-4 h-4 text-green-500" />
-                  ) : (
-                    <Copy className="w-4 h-4 text-slate-500" />
-                  )}
-                </button>
-              </div>
-            </div>
-          )}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {items.slice(0, 8).map((transfer: any, index: number) => {
+          if (!transfer.token) return null;
 
-          {data.status && (
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-slate-600 dark:text-slate-400">Status:</span>
-              <span
-                className={`text-sm font-semibold ${
-                  data.status === 'ok' ? 'text-green-600' : 'text-red-600'
-                }`}
-              >
-                {data.status === 'ok' ? 'Success' : 'Failed'}
-              </span>
-            </div>
-          )}
+          const tokenBalance: TokenBalance = {
+            token: {
+              address: transfer.token.address || '',
+              name: transfer.token.name || 'Unknown',
+              symbol: transfer.token.symbol || '???',
+              decimals: transfer.token.decimals || '18',
+              type: transfer.token.type || 'ERC-20',
+            },
+            value: transfer.total?.value || transfer.value || '0',
+          };
 
-          {data.value && (
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-slate-600 dark:text-slate-400">Value:</span>
-              <span className="text-sm font-semibold">
-                {(parseFloat(data.value) / 1e18).toFixed(4)} ETH
-              </span>
-            </div>
-          )}
-
-          {data.gas_used && (
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-slate-600 dark:text-slate-400">Gas Used:</span>
-              <span className="text-sm">{data.gas_used}</span>
-            </div>
-          )}
-
-          {data.block_number && (
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-slate-600 dark:text-slate-400">Block:</span>
-              <span className="text-sm">{data.block_number}</span>
-            </div>
-          )}
-        </div>
-      </Card>
+          return (
+            <TokenBalanceCard
+              key={index}
+              token={tokenBalance}
+              valueUsd={transfer.total?.value ? Number(transfer.total.value) : undefined}
+            />
+          );
+        })}
+      </div>
     );
   };
 
   const renderJSON = () => {
     return (
-      <Card className="p-4 bg-slate-900 dark:bg-slate-950 border-slate-700 overflow-x-auto">
+      <Card className="p-4 bg-slate-900/50 border-slate-800 overflow-x-auto max-h-96">
         <pre className="text-xs text-green-400 font-mono">
           {JSON.stringify(data, null, 2)}
         </pre>
@@ -203,14 +146,15 @@ export function DataVisualization({ data, tool }: DataVisualizationProps) {
   };
 
   switch (tool) {
-    case 'get_address_info':
-      return renderAddressInfo();
+    case 'get_tokens_by_address':
+      return renderPortfolio();
     case 'get_transactions_by_address':
-    case 'get_token_transfers_by_address':
       return renderTransactions();
-    case 'transaction_summary':
-      return renderTransactionSummary();
+    case 'get_token_transfers_by_address':
+      return renderTokenTransfers();
     default:
+      if (category === 'portfolio') return renderPortfolio();
+      if (category === 'transactions') return renderTransactions();
       return renderJSON();
   }
 }
